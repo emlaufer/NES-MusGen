@@ -1,5 +1,8 @@
 import torch
 import numpy as np
+from torch.utils.data import Dataset
+import os
+import os.path
 
 PULSE1_THRESH = 31
 PULSE2_THRESH = 31
@@ -69,6 +72,23 @@ def exprsco_preprocess(data):
         offset += dim
 
     return result
+
+class NESExprDataset(Dataset): 
+    def __init__(self, folder_name):
+        self.folder_name = folder_name
+
+        self.filenames = [os.path.realpath(fn) for fn in
+                os.listdir(folder_name)]
+
+    def __len__(self):
+        return len(filenames)
+
+    def __getitem__(self, index):
+        with open(filenames[index], 'rb') as f:
+            rate, nsamps, exprsco = pickle.load(f)
+            
+        return exprsco_preprocess(exprsco)
+
 
 
 def test_exprsco_preprocess(test_filename):
