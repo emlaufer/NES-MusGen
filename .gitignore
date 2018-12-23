@@ -107,3 +107,5 @@ venv.bak/
 
 # Added
 nesmdb24_exprsco/
+*.pt
+models/
