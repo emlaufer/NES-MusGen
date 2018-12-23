@@ -200,7 +200,7 @@ def main():
     args = parser.parse_args()
 
     out_files = [sys.stdout]
-    out_files.extend([open(filename) for filename in args.prog_outfile])
+    out_files.extend([open(filename, 'w') for filename in args.prog_outfile])
 
     try:
         if args.config_file is None:
@@ -254,7 +254,7 @@ def main():
         if args.action == 'train':
             train(model, state, cfg)
     finally:
-        for f in out_files:
+        for f in out_files[1:]:
             f.close()
 
 if __name__ == '__main__':
