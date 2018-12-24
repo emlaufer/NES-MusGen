@@ -17,10 +17,10 @@ import pickle
 
 # Options that can be changed between different runs of the model
 DEFAULT_RUN_CONFIG = {
-    'epochs': 2,
-    'batch_size': 1,
-    'validation_freq': 2,
-    'validation_prop': 0.01
+    'epochs': 5,
+    'batch_size': 8,
+    'validation_freq': 30,
+    'validation_prop': 0.25
 }
 
 # Options that can't be changed between different runs of the model
@@ -121,6 +121,9 @@ def validate_and_checkpoint(model, optimizer, val_loader, cfg, state):
     if cfg['latest_model_filename'] is not None:
         torch.save(state, cfg['latest_model_filename'])
 
+    tee('Average validation loss:', avg_val_loss, files=cfg['out_files'])
+    tee(files=cfg['out_files'])
+
 
 
 def validation_pass(model, val_loader, cfg, state):
@@ -155,7 +158,6 @@ def validation_pass(model, val_loader, cfg, state):
                 'minibatch': state['minibatch_count'],
                 'losses': losses
                 })
-        tee(files=cfg['out_files'])
 
     model.train()
 
