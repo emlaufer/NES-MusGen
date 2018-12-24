@@ -1,5 +1,6 @@
 from ..data_process.expressive import NESExprDataset, collate_expressive, \
-        DIMENSIONS, TOTAL_DIM
+        DIMENSIONS, TOTAL_DIM, INDICES, SOS_IDX, EOS_IDX, NORMAL_IDX, \
+        unsqueeze_categories
 from ..modules import BaselineLSTM
 import torch
 from torch.utils.data import DataLoader
@@ -11,6 +12,8 @@ import sys
 import numpy as np
 import os.path
 import itertools
+import torch.nn.functional as functional
+import pickle
 
 # Options that can be changed between different runs of the model
 DEFAULT_RUN_CONFIG = {
@@ -180,15 +183,69 @@ def train(model, state, cfg):
         state['epoch'] = i
         train_epoch(model, optimizer, train_loader, val_loader, state, cfg)
 
+def generate_rand_song(model, cfg, max_seconds=30., temperature=1.):
+    max_samples = int(round(max_seconds * 24.))
+
+    model.generate()
+    with torch.no_grad():
+        current_sample = torch.zeros(1, 1, TOTAL_DIM,
+                device=cfg['computing_device'])
+
+        generated_song = []
+        for i in range(max_samples):
+            output_logits = model(current_sample, [1])
+            output_logits /= temperature
+            sos_eos_softmax = functional.softmax(output_logits[:, -3:], dim = 1)
+            sample_sos_eos = torch.multinomial(sos_eos_softmax, 1)
+
+            idx = SOS_IDX + sample_sos_eos[0].item()
+            if idx == SOS_IDX:
+                tee('Generate SOS index -- error', files=cfg['out_files'])
+                break
+            elif idx == EOS_IDX:
+                break
+
+            current_sample[:,:,:] = 0.
+            current_sample[0, 0, NORMAL_IDX] = 1.
+
+            generated_song.append(np.zeros((4, 3), dtype=np.uint8))
+            offset = 0
+            for dim, (idx1, idx2) in zip(DIMENSIONS, INDICES):
+                note_softmax = functional.softmax(
+                        output_logits[:, offset:offset+dim], dim = 1)
+                sample_note = torch.multinomial(note_softmax, 1)
+                generated_song[-1][idx1, idx2] = sample_note
+
+                current_sample[0, 0, offset + sample_note] = 1.
+
+                offset += dim
+
+        generated_song = np.array(generated_song, dtype=np.uint8)
+        unsqueeze_categories(generated_song)
+        tee('Generated song of length', generated_song.shape[0],
+                files=cfg['out_files'])
+        output_tuple = (24.0, generated_song.shape[0], generated_song)
+
+        with open(cfg['generated_out_file'], 'wb') as f:
+            pickle.dump(output_tuple, f, protocol=2)
+
+
+
+    model.reset_saved_hiddens()
+
+    model.train()
+
+
 
 def add_all_arguments(parser):
     parser.add_argument('--action', '-a', default='train',
-            choices=['train'])
+            choices=['train', 'generate'])
     parser.add_argument('--config-file', '-c', default=None)
     parser.add_argument('--model-infile', '-m', default=None)
     parser.add_argument('--best-model', '-b', default='__best_model.pt')
     parser.add_argument('--latest-model', '-l', default='__latest_model.pt')
     parser.add_argument('--prog-outfile', '-p', action='append', default=[])
+    parser.add_argument('--generate-out', '-o', default='__generate.out.pkl')
 
 
 def load_config(filename):
@@ -214,6 +271,7 @@ def main():
         cfg['best_model_filename'] = args.best_model
         cfg['latest_model_filename'] = args.latest_model
         cfg['out_files'] = out_files
+        cfg['generated_out_file'] =  args.generate_out
 
         if torch.cuda.is_available():
             cfg['computing_device'] = torch.device('cuda')
@@ -239,13 +297,19 @@ def main():
             state['run_config'] = run_config
 
             for key in state['model_config']:
-                if state_model_config[key] != state['config'][key]:
+                if state_model_config[key] != state['model_config'][key]:
                     raise ValueError('New config does not match checkpoint config')
 
             state['model_config'] = state_model_config
 
             model.load_state_dict(state['model_state_dict'])
             cfg['optim_state_dict'] = state['optim_state_dict']
+            tee(('\nLoaded existing model with\nMin Validation Loss: {}\n'
+                'Epoch: {}\nMinibatch: {}\n\n').format(
+                    state['min_validation_loss'],
+                    state['epoch'],
+                    state['minibatch_count']), files=cfg['out_files'])
+
 
         state['random_seed'] = torch.initial_seed()
         
@@ -253,6 +317,8 @@ def main():
 
         if args.action == 'train':
             train(model, state, cfg)
+        elif args.action == 'generate':
+            generate_rand_song(model, cfg)
     finally:
         for f in out_files[1:]:
             f.close()

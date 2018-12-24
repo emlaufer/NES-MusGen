@@ -55,6 +55,17 @@ def squeeze_categories(data):
                 raise ValueError('Invalid triangle value')
             data[i][2][0] -= TRI_THRESH
 
+def unsqueeze_categories(data):
+    for i in range(data.shape[0]):
+        if data[i][0][0] != 0:
+            data[i][0][0] += PULSE1_THRESH
+
+        if data[i][1][0] != 0:
+            data[i][1][0] += PULSE2_THRESH
+
+        if data[i][2][0] != 0:
+            data[i][2][0] += TRI_THRESH
+
 
 def exprsco_preprocess(data):
     ''' Preprocess raw numpy array '''

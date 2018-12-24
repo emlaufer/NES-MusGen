@@ -9,6 +9,8 @@ class BaselineLSTM(nn.Module):
         self.hidden_dim = hidden_dim
         self.output_dim = TOTAL_DIM
 
+        self.saved_hiddens = None
+
         # TODO: randomly initialize?
         # TODO: add learnable initial hidden states
         self.lstm = nn.LSTM(input_size=self.input_dim, hidden_size=self.hidden_dim,
@@ -22,11 +24,17 @@ class BaselineLSTM(nn.Module):
     def forward(self, input, lengths):
         packed_in = nn.utils.rnn.pack_padded_sequence(input, lengths,
                 batch_first=True)
-        output, hidden = self.lstm(packed_in)
+        output, self.saved_hiddens = self.lstm(packed_in, self.saved_hiddens)
         outputs, output_lengths = torch.nn.utils.rnn.pad_packed_sequence(output, batch_first=True)
         out_logits = self.fc1(outputs)
         out_logits = out_logits.view(-1, self.output_dim)
 
         return out_logits
 
+    def reset_saved_hiddens(self):
+        self.saved_hiddens = None
+
+    def generate(self):
+        self.eval()
+        self.reset_saved_hiddens()
 
